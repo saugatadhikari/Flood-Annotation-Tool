@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 
 import re
 import os
+from collections import defaultdict
 
 import ipywidgets as widgets
 from ipywidgets import *
@@ -24,16 +25,24 @@ import IPython.display as Disp
 
 class bbox_select():
     
-    def __init__(self, ann_path, label_path):
+    def __init__(self, ann_path: str, label_path: str, flood_class: int):
+        """
+            ann_path: path to the features file(.npy)
+            label_path: path to the labels file(.npy)
+            flood_class: 1 if flood, 0 if dry
+        """
         
         ## Load annotation data
-        data = np.load(ann_path)
+        self.data = np.load(ann_path)
+
+        self.label_path = label_path
+        self.flood_class = flood_class
         
         ## Extract color image from data
-        self.color_image = data[:,:, :-1].astype('uint8')
+        self.color_image = self.data[:,:, :-1].astype('uint8')
         
         ## Extract elevaation data and convert to image
-        self.elevation_map = data[:,:, -1].astype('float')
+        self.elevation_map = self.data[:,:, -1].astype('float')
         
         # Normalize to 0 and 1
         self.elevation_map = ( self.elevation_map - np.min(self.elevation_map)) / \
@@ -44,16 +53,26 @@ class bbox_select():
         
         
         ## Extract labels
-        labels = np.load(label_path)
+        # initially there might be no labels
+        try:
+            self.labels = np.load(label_path)
+        except FileNotFoundError:
+            if flood_class:
+                self.labels = np.zeros((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
+            else:
+                self.labels = np.ones((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
         
         ## Extract land indices
-        land_idx = np.where(labels == 0) 
+        land_idx = np.where(self.labels == 0) 
         
         ## Extract flood indices
-        flood_idx = np.where(labels == 1)
+        flood_idx = np.where(self.labels == 1)
         
         ## Create combined map
-        self.combined_mask = np.zeros((labels.shape[0], labels.shape[0], 3))
+        if flood_class:
+            self.combined_mask = np.zeros((self.labels.shape[0], self.labels.shape[1], 3))
+        else:
+            self.combined_mask = np.ones((self.labels.shape[0], self.labels.shape[1], 3))
         
         self.combined_mask[land_idx[0], land_idx[1], 2] = 255
         self.combined_mask[flood_idx[0], flood_idx[1], 0] = 255
@@ -90,12 +109,12 @@ class bbox_select():
         # Create third subplot
         self.bbox_figure_ax2 = self.bbox_figure.add_subplot(gs[2:, 0:2])
         self.bbox_figure_ax2.set_title('3. Color Image Overlay')
-        self.bbox_figure_ax2.imshow(self.color_image_overlay.copy(), cmap = 'gray')
+        self.color_overlay_view = self.bbox_figure_ax2.imshow(self.color_image_overlay.copy(), cmap = 'gray')
         
         # Create fourth subplot
         self.bbox_figure_ax3 = self.bbox_figure.add_subplot(gs[2:, 2:])
         self.bbox_figure_ax3.set_title('4. Elevation Image Overlay')
-        self.bbox_figure_ax3.imshow(self.elevation_image_overlay.copy(), cmap = 'gray')
+        self.elevation_overlay_view = self.bbox_figure_ax3.imshow(self.elevation_image_overlay.copy(), cmap = 'gray')
         
         
     
@@ -112,3 +131,164 @@ class bbox_select():
             
         self.image_view.set_data(self.cicle_img(self.color_image.copy(), self.selected_points))
         self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), self.selected_points))
+        self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), self.selected_points))
+        self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), self.selected_points))
+
+    
+    # def bfs(self):
+    #     # round selected point to nearest integer
+    #     self.selected_point = (round(self.selected_points[0]), round(self.selected_points[1]))
+    #     i, j = self.selected_point
+
+    #     height, width = self.elevation_map.shape
+
+    #     # get 8 neighboring pixels and their elevation
+    #     # flooded_pixels = []
+    #     bfs_queue = []
+
+    #     bfs_queue.append(self.selected_point)
+
+    #     bfs_visited = defaultdict(lambda: defaultdict(bool))
+    #     bfs_visited[i][j] = True
+
+    #     self.flood_labels = self.labels.copy()
+
+    #     while bfs_queue:
+    #         (i, j) = bfs_queue.pop(0)
+    #         bfs_visited[i][j] = True
+
+    #         # go through the 8 neighbors
+    #         for l in [-1, 0, 1]:
+    #             for r in [-1, 0, 1]:
+    #                 if (l == r == 0):
+    #                     continue
+
+    #                 i_nei, j_nei = (i+l, j+r) # get the neighboring i and j
+                    
+    #                 # check for boundary cases
+    #                 if i_nei < 0 or j_nei < 0 or i_nei >= width or j_nei >= height:
+    #                     continue
+                    
+    #                 # check if already visited or not
+    #                 if bfs_visited[i_nei][j_nei]:
+    #                     continue
+                    
+    #                 # check current pixel's elevation with neighbor's elevation
+    #                 if self.flood_class:
+    #                     if (self.elevation_map[i_nei][j_nei] <= self.elevation_map[i][j]) and (self.flood_labels[j_nei][i_nei] == 0):
+    #                         self.flood_labels[j_nei][i_nei] = 1
+    #                         bfs_queue.append((i_nei, j_nei))
+    #                 else:
+    #                     if (self.elevation_map[i_nei][j_nei] >= self.elevation_map[i][j]) and (self.flood_labels[j_nei][i_nei] == 1):
+    #                         self.flood_labels[j_nei][i_nei] = 0
+    #                         bfs_queue.append((i_nei, j_nei))
+    
+    def bfs(self):
+        # round selected point to nearest integer
+        self.selected_point = (round(self.selected_points[0]), round(self.selected_points[1]))
+        i, j = self.selected_point
+
+        height, width = self.elevation_map.shape
+
+        # get 8 neighboring pixels and their elevation
+        # flooded_pixels = []
+        bfs_queue = []
+
+        # bfs_queue.append(self.selected_point)
+        bfs_queue.append((j,i))
+
+        bfs_visited = defaultdict(lambda: defaultdict(bool))
+        bfs_visited[j][i] = True
+
+        self.flood_labels = self.labels.copy()
+
+        while bfs_queue:
+            (j, i) = bfs_queue.pop(0)
+            bfs_visited[j][i] = True
+
+            # go through the 8 neighbors
+            for l in [-1, 0, 1]:
+                for r in [-1, 0, 1]:
+                    if (l == r == 0):
+                        continue
+
+                    j_nei, i_nei = (j+l, i+r) # get the neighboring i and j
+                    
+                    # check for boundary cases
+                    if i_nei < 0 or j_nei < 0 or i_nei >= width or j_nei >= height:
+                        continue
+                    
+                    # check if already visited or not
+                    if bfs_visited[j_nei][i_nei]:
+                        continue
+                    
+                    # check current pixel's elevation with neighbor's elevation
+                    if self.flood_class:
+                        if (self.elevation_map[j_nei][i_nei] <= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 0):
+                            self.flood_labels[j_nei][i_nei] = 1
+                            bfs_queue.append((j_nei, i_nei))
+                    else:
+                        if (self.elevation_map[j_nei][i_nei] >= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 1):
+                            self.flood_labels[j_nei][i_nei] = 0
+                            bfs_queue.append((j_nei, i_nei))
+
+
+    def plot_bfs_result(self):
+        print(self.flood_labels.shape)
+
+        ## Extract land indices
+        land_idx = np.where(self.flood_labels == 0) 
+
+        ## Extract flood indices
+        flood_idx = np.where(self.flood_labels == 1)
+
+        ## Create combined map
+        if self.flood_class:
+            combined_mask = np.zeros((self.flood_labels.shape[0], self.flood_labels.shape[1], 3))
+        else:
+            combined_mask = np.ones((self.flood_labels.shape[0], self.flood_labels.shape[1], 3))
+
+        combined_mask[land_idx[0], land_idx[1], 2] = 255
+        combined_mask[flood_idx[0], flood_idx[1], 0] = 255
+        combined_mask = combined_mask.astype("uint8")
+
+        ## Overlay color mask        
+        color_image_overlay = cv2.addWeighted(self.color_image.copy(), 0.7, combined_mask.copy(), 0.3, 0.0)
+        elevation_image_overlay = cv2.addWeighted(self.elevation_image.copy(), 0.7, combined_mask.copy(), 0.3, 0.0)
+
+        # Create new figure
+        bbox_figure = plt.figure(1, constrained_layout=True, figsize=(9, 9))
+
+        # Create a grid spec for figure
+        gs = bbox_figure.add_gridspec(2, 2)
+
+        # Create third subplot
+        bbox_figure_ax2 = bbox_figure.add_subplot(gs[0:1, 0:1])
+        bbox_figure_ax2.set_title('3. Color Image Overlay')
+        bbox_figure_ax2.imshow(color_image_overlay.copy(), cmap = 'gray')
+
+        # Create fourth subplot
+        bbox_figure_ax3 = bbox_figure.add_subplot(gs[0:1, 1:2])
+        bbox_figure_ax3.set_title('4. Elevation Image Overlay')
+        bbox_figure_ax3.imshow(elevation_image_overlay.copy(), cmap = 'gray')
+
+    
+    def commit_result(self):
+        np.save(self.label_path, self.flood_labels)
+    
+
+    def plot_trisurface(self):
+        X = []
+        Y = []
+        Z = []
+
+        for i in range(self.data.shape[0]):
+            for j in range(self.data.shape[1]):
+                X.append(i)
+                Y.append(j)
+                Z.append(self.data[i][j][-1])
+
+        plt.figure(figsize=(10,10))
+        ax = plt.axes(projection='3d')
+        ax.plot_trisurf(X, Y, Z, cmap='viridis', edgecolor='none')
+
