@@ -125,71 +125,116 @@ class bbox_select():
     
     def onclick(self, event):
         #display(str(event))
-        # self.selected_points = [event.xdata, event.ydata]
-        self.selected_points.append([event.xdata, event.ydata])
+        self.selected_points = [event.xdata, event.ydata]
         
         self.bbox_figure
-        
-        for selected_point in self.selected_points:
-            self.image_view.set_data(self.cicle_img(self.color_image.copy(), selected_point))
-            self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), selected_point))
-            self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), selected_point))
-            self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), selected_point))
+            
+        self.image_view.set_data(self.cicle_img(self.color_image.copy(), self.selected_points))
+        self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), self.selected_points))
+        self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), self.selected_points))
+        self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), self.selected_points))
+
+    
+    # def bfs(self):
+    #     # round selected point to nearest integer
+    #     self.selected_point = (round(self.selected_points[0]), round(self.selected_points[1]))
+    #     i, j = self.selected_point
+
+    #     height, width = self.elevation_map.shape
+
+    #     # get 8 neighboring pixels and their elevation
+    #     # flooded_pixels = []
+    #     bfs_queue = []
+
+    #     bfs_queue.append(self.selected_point)
+
+    #     bfs_visited = defaultdict(lambda: defaultdict(bool))
+    #     bfs_visited[i][j] = True
+
+    #     self.flood_labels = self.labels.copy()
+
+    #     while bfs_queue:
+    #         (i, j) = bfs_queue.pop(0)
+    #         bfs_visited[i][j] = True
+
+    #         # go through the 8 neighbors
+    #         for l in [-1, 0, 1]:
+    #             for r in [-1, 0, 1]:
+    #                 if (l == r == 0):
+    #                     continue
+
+    #                 i_nei, j_nei = (i+l, j+r) # get the neighboring i and j
+                    
+    #                 # check for boundary cases
+    #                 if i_nei < 0 or j_nei < 0 or i_nei >= width or j_nei >= height:
+    #                     continue
+                    
+    #                 # check if already visited or not
+    #                 if bfs_visited[i_nei][j_nei]:
+    #                     continue
+                    
+    #                 # check current pixel's elevation with neighbor's elevation
+    #                 if self.flood_class:
+    #                     if (self.elevation_map[i_nei][j_nei] <= self.elevation_map[i][j]) and (self.flood_labels[j_nei][i_nei] == 0):
+    #                         self.flood_labels[j_nei][i_nei] = 1
+    #                         bfs_queue.append((i_nei, j_nei))
+    #                 else:
+    #                     if (self.elevation_map[i_nei][j_nei] >= self.elevation_map[i][j]) and (self.flood_labels[j_nei][i_nei] == 1):
+    #                         self.flood_labels[j_nei][i_nei] = 0
+    #                         bfs_queue.append((i_nei, j_nei))
     
     def bfs(self):
+        # round selected point to nearest integer
+        self.selected_point = (round(self.selected_points[0]), round(self.selected_points[1]))
+        i, j = self.selected_point
+
         height, width = self.elevation_map.shape
 
         # get 8 neighboring pixels and their elevation
+        # flooded_pixels = []
         bfs_queue = []
+
+        # bfs_queue.append(self.selected_point)
+        bfs_queue.append((j,i))
+
         bfs_visited = defaultdict(lambda: defaultdict(bool))
+        bfs_visited[j][i] = True
 
         self.flood_labels = self.labels.copy()
-        
-        for selected_point in self.selected_points:
-            # round selected point to nearest integer
-            selected_point = (round(selected_point[0]), round(selected_point[1]))
-            i, j = selected_point
 
-            # this pixel might be selected twice
-            if bfs_visited[j][i]:
-                continue
-
-            bfs_queue.append((j,i))
-
+        while bfs_queue:
+            (j, i) = bfs_queue.pop(0)
             bfs_visited[j][i] = True
 
-            while bfs_queue:
-                (j, i) = bfs_queue.pop(0)
-                bfs_visited[j][i] = True
+            # go through the 8 neighbors
+            for l in [-1, 0, 1]:
+                for r in [-1, 0, 1]:
+                    if (l == r == 0):
+                        continue
 
-                # go through the 8 neighbors
-                for l in [-1, 0, 1]:
-                    for r in [-1, 0, 1]:
-                        if (l == r == 0):
-                            continue
-
-                        j_nei, i_nei = (j+l, i+r) # get the neighboring i and j
-                        
-                        # check for boundary cases
-                        if i_nei < 0 or j_nei < 0 or i_nei >= width or j_nei >= height:
-                            continue
-                        
-                        # check if already visited or not
-                        if bfs_visited[j_nei][i_nei]:
-                            continue
-                        
-                        # check current pixel's elevation with neighbor's elevation
-                        if self.flood_class:
-                            if (self.elevation_map[j_nei][i_nei] <= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 0):
-                                self.flood_labels[j_nei][i_nei] = 1
-                                bfs_queue.append((j_nei, i_nei))
-                        else:
-                            if (self.elevation_map[j_nei][i_nei] >= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 1):
-                                self.flood_labels[j_nei][i_nei] = 0
-                                bfs_queue.append((j_nei, i_nei))
+                    j_nei, i_nei = (j+l, i+r) # get the neighboring i and j
+                    
+                    # check for boundary cases
+                    if i_nei < 0 or j_nei < 0 or i_nei >= width or j_nei >= height:
+                        continue
+                    
+                    # check if already visited or not
+                    if bfs_visited[j_nei][i_nei]:
+                        continue
+                    
+                    # check current pixel's elevation with neighbor's elevation
+                    if self.flood_class:
+                        if (self.elevation_map[j_nei][i_nei] <= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 0):
+                            self.flood_labels[j_nei][i_nei] = 1
+                            bfs_queue.append((j_nei, i_nei))
+                    else:
+                        if (self.elevation_map[j_nei][i_nei] >= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 1):
+                            self.flood_labels[j_nei][i_nei] = 0
+                            bfs_queue.append((j_nei, i_nei))
 
 
     def plot_bfs_result(self):
+        print(self.flood_labels.shape)
 
         ## Extract land indices
         land_idx = np.where(self.flood_labels == 0) 
