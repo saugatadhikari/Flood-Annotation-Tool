@@ -125,16 +125,15 @@ class bbox_select():
     
     def onclick(self, event):
         #display(str(event))
-        # self.selected_points = [event.xdata, event.ydata]
-        self.selected_points.append([event.xdata, event.ydata])
+        selected_point = [event.xdata, event.ydata]
+        self.selected_points.append(selected_point)
         
         self.bbox_figure
-        
-        for selected_point in self.selected_points:
-            self.image_view.set_data(self.cicle_img(self.color_image.copy(), selected_point))
-            self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), selected_point))
-            self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), selected_point))
-            self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), selected_point))
+
+        self.image_view.set_data(self.cicle_img(self.color_image.copy(), selected_point))
+        self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), selected_point))
+        self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), selected_point))
+        self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), selected_point))
     
     def bfs(self):
         height, width = self.elevation_map.shape
@@ -232,7 +231,16 @@ class bbox_select():
         np.save(self.label_path, self.flood_labels)
     
 
-    def plot_trisurface(self):
+    def plot_3d(self):
+        land_idx = np.where(self.flood_labels == 0)
+        flood_idx = np.where(self.flood_labels == 1)
+
+        cm = np.zeros((224, 224,3))
+
+        cm[land_idx[0], land_idx[1], 0] = 255
+        cm[flood_idx[0], flood_idx[1], 2] = 255
+        cm = cm.astype("uint8")
+
         X = []
         Y = []
         Z = []
@@ -245,5 +253,5 @@ class bbox_select():
 
         plt.figure(figsize=(10,10))
         ax = plt.axes(projection='3d')
-        ax.plot_trisurf(X, Y, Z, cmap='viridis', edgecolor='none')
+        ax.scatter(X, Y, Z, edgecolor='none',c=cm[:,:,-1], cmap='jet')
 
