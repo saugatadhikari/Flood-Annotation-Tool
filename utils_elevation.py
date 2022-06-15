@@ -1,21 +1,11 @@
-import numpy as np
-import json
-
-import cv2
-from PIL import Image
-#import skimage
-#from skimage.draw import disk
-
-import matplotlib
-from matplotlib import pyplot as plt
-
-import re
-import os
 from collections import defaultdict
 
-import ipywidgets as widgets
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib import tri
+
 from ipywidgets import *
-import IPython.display as Disp
 
 
 
@@ -57,10 +47,11 @@ class bbox_select():
         try:
             self.labels = np.load(label_path)
         except FileNotFoundError:
-            if flood_class:
-                self.labels = np.zeros((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
-            else:
-                self.labels = np.ones((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
+            self.labels = np.full((self.elevation_map.shape[0], self.elevation_map.shape[1], 1), -1)
+            # if flood_class:
+            #     self.labels = np.zeros((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
+            # else:
+            #     self.labels = np.ones((self.elevation_map.shape[0], self.elevation_map.shape[1], 1))
         
         ## Extract land indices
         land_idx = np.where(self.labels == 0) 
@@ -99,7 +90,7 @@ class bbox_select():
         self.bbox_figure_ax1 = self.bbox_figure.add_subplot(gs[0:2, 0:2])
         self.bbox_figure_ax1.set_title('1. Color Image')
         self.image_view = self.bbox_figure_ax1.imshow(self.color_image.copy())
-        
+
         # Create Second subplot
         self.bbox_figure_ax4 = self.bbox_figure.add_subplot(gs[0:2, 2:])
         self.bbox_figure_ax4.set_title('2. Elevation Image')
@@ -118,22 +109,25 @@ class bbox_select():
         
         
     
-    def cicle_img(self, img, pts):    
-        img = cv2.circle(img, (int(pts[0]), int(pts[1])), radius = 2, color = (255, 0, 0), thickness=-1)
+    def circle_img(self, img, pts):
+        c_color = (255, 0, 0)
+        if self.flood_class == 0:
+            c_color = (0, 0, 255)
+        for pt in pts: 
+            img = cv2.circle(img, (int(pt[0]), int(pt[1])), radius = 2, color = c_color, thickness=-1)
         return img
 
     
     def onclick(self, event):
-        #display(str(event))
         selected_point = [event.xdata, event.ydata]
         self.selected_points.append(selected_point)
         
         self.bbox_figure
 
-        self.image_view.set_data(self.cicle_img(self.color_image.copy(), selected_point))
-        self.elevation_view.set_data(self.cicle_img(self.elevation_image.copy(), selected_point))
-        self.color_overlay_view.set_data(self.cicle_img(self.color_image_overlay.copy(), selected_point))
-        self.elevation_overlay_view.set_data(self.cicle_img(self.elevation_image_overlay.copy(), selected_point))
+        self.image_view.set_data(self.circle_img(self.color_image.copy(), self.selected_points))
+        self.elevation_view.set_data(self.circle_img(self.elevation_image.copy(), self.selected_points))
+        self.color_overlay_view.set_data(self.circle_img(self.color_image_overlay.copy(), self.selected_points))
+        self.elevation_overlay_view.set_data(self.circle_img(self.elevation_image_overlay.copy(), self.selected_points))
     
     def bfs(self):
         height, width = self.elevation_map.shape
@@ -146,12 +140,20 @@ class bbox_select():
         
         for selected_point in self.selected_points:
             # round selected point to nearest integer
-            selected_point = (round(selected_point[0]), round(selected_point[1]))
+            try:
+                selected_point = (round(selected_point[0]), round(selected_point[1]))
+            except TypeError:
+                continue
             i, j = selected_point
 
             # this pixel might be selected twice
             if bfs_visited[j][i]:
                 continue
+
+            if self.flood_class:
+                self.flood_labels[j][i] = 1
+            else:
+                self.flood_labels[j][i] = 0
 
             bfs_queue.append((j,i))
 
@@ -179,11 +181,11 @@ class bbox_select():
                         
                         # check current pixel's elevation with neighbor's elevation
                         if self.flood_class:
-                            if (self.elevation_map[j_nei][i_nei] <= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 0):
+                            if (self.elevation_map[j_nei][i_nei] <= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] != 1):
                                 self.flood_labels[j_nei][i_nei] = 1
                                 bfs_queue.append((j_nei, i_nei))
                         else:
-                            if (self.elevation_map[j_nei][i_nei] >= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] == 1):
+                            if (self.elevation_map[j_nei][i_nei] >= self.elevation_map[j][i]) and (self.flood_labels[j_nei][i_nei] != 0):
                                 self.flood_labels[j_nei][i_nei] = 0
                                 bfs_queue.append((j_nei, i_nei))
 
@@ -214,15 +216,15 @@ class bbox_select():
         bbox_figure = plt.figure(1, constrained_layout=True, figsize=(9, 9))
 
         # Create a grid spec for figure
-        gs = bbox_figure.add_gridspec(2, 2)
+        gs = bbox_figure.add_gridspec(1, 2)
 
         # Create third subplot
-        bbox_figure_ax2 = bbox_figure.add_subplot(gs[0:1, 0:1])
+        bbox_figure_ax2 = bbox_figure.add_subplot(gs[0, 0])
         bbox_figure_ax2.set_title('3. Color Image Overlay')
         bbox_figure_ax2.imshow(color_image_overlay.copy(), cmap = 'gray')
 
         # Create fourth subplot
-        bbox_figure_ax3 = bbox_figure.add_subplot(gs[0:1, 1:2])
+        bbox_figure_ax3 = bbox_figure.add_subplot(gs[0, 1])
         bbox_figure_ax3.set_title('4. Elevation Image Overlay')
         bbox_figure_ax3.imshow(elevation_image_overlay.copy(), cmap = 'gray')
 
@@ -231,7 +233,7 @@ class bbox_select():
         np.save(self.label_path, self.flood_labels)
     
 
-    def plot_3d(self):
+    def plot_3d_old_2(self):
         land_idx = np.where(self.flood_labels == 0)
         flood_idx = np.where(self.flood_labels == 1)
 
@@ -254,4 +256,88 @@ class bbox_select():
         plt.figure(figsize=(10,10))
         ax = plt.axes(projection='3d')
         ax.scatter(X, Y, Z, edgecolor='none',c=cm[:,:,-1], cmap='jet')
+
+
+    def plot_3d_old(self):
+        land_idxs = np.where(self.flood_labels == 0)
+        flood_idxs = np.where(self.flood_labels == 1)
+        unk_idxs = np.where(self.flood_labels == -1)
+
+        # cm = np.zeros((self.flood_labels.shape[0], self.flood_labels.shape[1]))
+        cm = np.full((self.flood_labels.shape[0], self.flood_labels.shape[1]), 135)
+
+        cm[land_idxs[0], land_idxs[1]] = 0
+        cm[flood_idxs[0], flood_idxs[1]] = 255
+        cm[unk_idxs[0], unk_idxs[1]] = 135
+
+        cm = cm.astype("uint8")
+
+        X = []
+        Y = []
+        Z = []
+
+        for i in range(self.data.shape[0]):
+            for j in range(self.data.shape[1]):
+                X.append(i)
+                Y.append(j)
+                Z.append(self.data[i][j][-1])
+
+        plt.figure(figsize=(10,10))
+        ax = plt.axes(projection='3d')
+
+        ax.plot_trisurf(X, Y, Z, edgecolor='none', color='green')
+        ax.scatter(X, Y, Z, edgecolor='none',c=cm, cmap='jet')
+
+    
+    def plot_3d(self):
+
+        X0 = []
+        Y0 = []
+        Z0 = []
+
+        X1 = []
+        Y1 = []
+        Z1 = []
+
+        X2 = []
+        Y2 = []
+        Z2 = []
+
+        X = []
+        Y = []
+        Z = []
+
+        for i in range(self.flood_labels.shape[0]):
+            for j in range(self.flood_labels.shape[1]):
+                X.append(i)
+                Y.append(j)
+                Z.append(self.data[i][j][-1])
+
+                if self.flood_labels[i][j] == 0:
+                    X0.append(i)
+                    Y0.append(j)
+                    Z0.append(self.data[i][j][-1])
+                elif self.flood_labels[i][j] == 1:
+                    X1.append(i)
+                    Y1.append(j)
+                    Z1.append(self.data[i][j][-1])
+                else:
+                    X2.append(i)
+                    Y2.append(j)
+                    Z2.append(self.data[i][j][-1])
+
+        plt.figure(figsize=(10,10))
+        ax = plt.axes(projection='3d')
+        
+        # ax.plot_trisurf(X, Y, Z, edgecolor='none', color='green')
+        
+        ax.plot_trisurf(X, Y, Z, edgecolor='none', color='green', alpha=0.5)
+        # ax.scatter(X2, Y2, Z2, c='green')
+
+        ax.scatter(X0, Y0, Z0, c='blue')
+        ax.scatter(X1, Y1, Z1, c='red')   
+        
+
+        
+        
 
