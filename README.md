@@ -1,4 +1,4 @@
-# Flood-Annotation
+# Flood-Annotation-Tool
 Annotation tool to annotate flooded and non-flooded regions on disaster-time satellite image
 
 Instructions for using the code:   
