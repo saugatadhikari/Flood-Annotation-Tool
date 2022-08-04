@@ -163,7 +163,8 @@ class bbox_select():
     
     def onclick(self, event):
         selected_point = [event.xdata, event.ydata]
-        self.selected_points.append(selected_point)
+        if not None in selected_point:
+            self.selected_points.append(selected_point)
 
         if self.annotation_type == "point":
             self.bbox_figure
@@ -203,7 +204,7 @@ class bbox_select():
         for selected_point in self.selected_points:
             # round selected point to nearest integer
             try:
-                selected_point = (round(selected_point[0]), round(selected_point[1]))
+                selected_point = (int(round(selected_point[0])), int(round(selected_point[1])))
             except TypeError:
                 continue
             i, j = selected_point
