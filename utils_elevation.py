@@ -5,7 +5,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import tri
 
+import ipywidgets as widgets
 from ipywidgets import *
+import IPython.display as Disp
 
 
 
@@ -76,6 +78,29 @@ class bbox_select():
         
         # Array to store polygon coordinates
         self.selected_points = []
+
+        # Create a refresh button to display on matplotlib canvas
+        polygon_button = widgets.Button(description='Draw Polygon',
+                                        disabled=False,
+                                        button_style = 'danger', # 'success', 'info', 'warning', 'danger' or ''
+                                        tooltip='Click me',
+                                        icon='polygon' # (FontAwesome names without the `fa-` prefix)
+                                       )
+        # Display Refresh Button
+        Disp.display(polygon_button)
+        polygon_button.on_click(self.polygon)
+        
+        
+        # Create a preview button to display on matplotlib canvas
+        point_button = widgets.Button(description='Select Points',
+                                        disabled=False,
+                                        button_style = 'info', # 'success', 'info', 'warning', 'danger' or ''
+                                        tooltip='Click me',
+                                        icon='point' # (FontAwesome names without the `fa-` prefix)
+                                       )
+        # Display Refresh Button
+        Disp.display(point_button)
+        point_button.on_click(self.point)
         
         # Create new figure
         self.bbox_figure = plt.figure(1, constrained_layout=True, figsize=(9, 9))
@@ -106,8 +131,17 @@ class bbox_select():
         self.bbox_figure_ax3 = self.bbox_figure.add_subplot(gs[2:, 2:])
         self.bbox_figure_ax3.set_title('4. Elevation Image Overlay')
         self.elevation_overlay_view = self.bbox_figure_ax3.imshow(self.elevation_image_overlay.copy(), cmap = 'gray')
+
+        self.annotation_type = "point" # we set point annotation by default
+
         
         
+    
+    def polygon(self, _):
+        self.annotation_type = "polygon"
+
+    def point(self, _):
+        self.annotation_type = "point"
     
     def circle_img(self, img, pts):
         c_color = (255, 0, 0)
@@ -117,19 +151,48 @@ class bbox_select():
             img = cv2.circle(img, (int(pt[0]), int(pt[1])), radius = 2, color = c_color, thickness=-1)
         return img
 
+    def poly_img(self, img, pts):
+        pts = np.array(pts, np.int32)
+        pts = pts.reshape((-1, 1, 2))
+        c_color = (255, 0, 0)
+        if self.flood_class == 0:
+            c_color = (0, 0, 255)
+        cv2.polylines(img, [pts], True, c_color, 1)
+        return img
+
     
     def onclick(self, event):
         selected_point = [event.xdata, event.ydata]
-        self.selected_points.append(selected_point)
-        
-        self.bbox_figure
+        if not None in selected_point:
+            self.selected_points.append(selected_point)
 
-        self.image_view.set_data(self.circle_img(self.color_image.copy(), self.selected_points))
-        self.elevation_view.set_data(self.circle_img(self.elevation_image.copy(), self.selected_points))
-        self.color_overlay_view.set_data(self.circle_img(self.color_image_overlay.copy(), self.selected_points))
-        self.elevation_overlay_view.set_data(self.circle_img(self.elevation_image_overlay.copy(), self.selected_points))
+        if self.annotation_type == "point":
+            self.bbox_figure
+
+            self.image_view.set_data(self.circle_img(self.color_image.copy(), self.selected_points))
+            self.elevation_view.set_data(self.circle_img(self.elevation_image.copy(), self.selected_points))
+            self.color_overlay_view.set_data(self.circle_img(self.color_image_overlay.copy(), self.selected_points))
+            self.elevation_overlay_view.set_data(self.circle_img(self.elevation_image_overlay.copy(), self.selected_points))
+
+        elif self.annotation_type == "polygon":
+            if len(self.selected_points)>1:
+                self.bbox_figure
+                self.image_view.set_data(self.poly_img(self.color_image.copy(), self.selected_points))
+                self.elevation_view.set_data(self.poly_img(self.elevation_image.copy(), self.selected_points))
+                self.color_overlay_view.set_data(self.poly_img(self.color_image_overlay.copy(), self.selected_points))
+                self.elevation_overlay_view.set_data(self.poly_img(self.elevation_image_overlay.copy(), self.selected_points))
     
     def bfs(self):
+        if self.annotation_type == "polygon":
+            if len(self.selected_points) > 1:
+                # Convert Coordiantes of the polygon to numpy array
+                self.np_selected_points = np.array([self.selected_points], 'int')
+
+                #Get polygon region
+                self.fill_mask = cv2.fillPoly(np.zeros(self.elevation_map.shape, np.uint8), self.np_selected_points, [1])
+                polygon_area = np.where(self.fill_mask != 0)
+                self.selected_points = list(zip(polygon_area[1], polygon_area[0]))
+
         height, width = self.elevation_map.shape
 
         # get 8 neighboring pixels and their elevation
@@ -141,7 +204,7 @@ class bbox_select():
         for selected_point in self.selected_points:
             # round selected point to nearest integer
             try:
-                selected_point = (round(selected_point[0]), round(selected_point[1]))
+                selected_point = (int(round(selected_point[0])), int(round(selected_point[1])))
             except TypeError:
                 continue
             i, j = selected_point
