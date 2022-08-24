@@ -1,4 +1,4 @@
 numpy==1.21.5
-opencv
+opencv-python
 matplotlib==3.5.1
 ipywidgets==7.6.5
